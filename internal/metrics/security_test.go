@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"github.com/xperimental/nextcloud-exporter/serverinfo"
 )
 
 func testChecker(snapshot *advisorySnapshot) *SecurityChecker {
@@ -326,6 +327,63 @@ func TestRefreshLogsResultWithoutScrape(t *testing.T) {
 
 	if !strings.Contains(buf.String(), "33.0.4.1 -> 33.0.8.2") {
 		t.Errorf("the verdict is missing the version pair from the last scrape:\n%s", buf.String())
+	}
+}
+
+// The verdict must reach the log on the strength of the advisory load alone: the checker
+// reads the server version itself, so the line appears without a single scrape.
+func TestRefreshLogsResultWithoutAnyScrape(t *testing.T) {
+	const page = `[{
+		"ghsa_id": "GHSA-1",
+		"cve_id": "CVE-2026-61527",
+		"vulnerabilities": [{
+			"package": {"ecosystem": "nextcloud", "name": "Server"},
+			"patched_versions": "33.0.8"
+		}]
+	}]`
+
+	checker, buf := testCheckerWithLog(nil)
+	checker.fetcher = testFetcher(t, func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, page)
+	})
+	checker.info = func() (*serverinfo.ServerInfo, error) {
+		status := &serverinfo.ServerInfo{}
+		status.Data.Nextcloud.System.Version = "33.0.4.1"
+		status.Data.Nextcloud.System.Update.Available = true
+		status.Data.Nextcloud.System.Update.AvailableVersion = "33.0.8.2"
+
+		return status, nil
+	}
+
+	if err := checker.refresh(context.Background()); err != nil {
+		t.Fatalf("refresh() failed: %s", err)
+	}
+
+	if !strings.Contains(buf.String(), "update 33.0.4.1 -> 33.0.8.2 contains fixes for 1 vulnerabilities: CVE-2026-61527") {
+		t.Errorf("the load did not print the verdict on its own:\n%s", buf.String())
+	}
+}
+
+// A server with no update on offer has no verdict to print, and the load must stay quiet
+// about it rather than reporting on a pair of versions it does not have.
+func TestRefreshStaysQuietWithoutUpdate(t *testing.T) {
+	checker, buf := testCheckerWithLog(nil)
+	checker.fetcher = testFetcher(t, func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `[{"ghsa_id":"GHSA-1","cve_id":"CVE-2026-61527","vulnerabilities":[{"package":{"ecosystem":"nextcloud","name":"Server"},"patched_versions":"33.0.8"}]}]`)
+	})
+	checker.info = func() (*serverinfo.ServerInfo, error) {
+		status := &serverinfo.ServerInfo{}
+		status.Data.Nextcloud.System.Version = "33.0.8.2"
+
+		return status, nil
+	}
+
+	if err := checker.refresh(context.Background()); err != nil {
+		t.Fatalf("refresh() failed: %s", err)
+	}
+
+	if strings.Contains(buf.String(), "CVE-2026-61527") {
+		t.Errorf("a verdict was printed even though the server offers no update:\n%s", buf.String())
 	}
 }
 

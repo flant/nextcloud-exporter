@@ -81,16 +81,19 @@ func main() {
 		log.Warn("HTTPS certificate verification is disabled.")
 	}
 
+	infoClient := client.New(infoURL, cfg.Username, cfg.Password, cfg.AuthToken, cfg.Timeout, userAgent, cfg.TLSSkipVerify)
+
 	// The security-fix check is tied to the update metric and has no option of its
-	// own.
+	// own. It gets the info client so that it can read the server version itself and
+	// report the vulnerabilities an update closes when the advisories are loaded,
+	// rather than when someone scrapes /metrics.
 	var securityChecker *metrics.SecurityChecker
 	if cfg.Info.Update {
-		securityChecker = metrics.NewSecurityChecker(log, userAgent)
+		securityChecker = metrics.NewSecurityChecker(log, userAgent, infoClient)
 		securityChecker.Start(context.Background())
 		log.Info("Only updates containing security fixes are reported, see the advisories_available metric label.")
 	}
 
-	infoClient := client.New(infoURL, cfg.Username, cfg.Password, cfg.AuthToken, cfg.Timeout, userAgent, cfg.TLSSkipVerify)
 	if err := metrics.RegisterCollector(log, infoClient, cfg.Info.Apps, cfg.Info.Update, securityChecker); err != nil {
 		log.Fatalf("Failed to register collector: %s", err)
 	}
