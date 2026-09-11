@@ -14,7 +14,7 @@ The following tags are available:
 
 - `x.y.z` pointing to the release with that version
 - `latest` pointing to the most recent released version
-- `master` pointing to the latest build from the default branch
+- `main` pointing to the latest build from the default branch
 
 ### Pre-built binaries
 

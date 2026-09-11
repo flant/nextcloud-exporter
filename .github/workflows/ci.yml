@@ -3,13 +3,13 @@ name: CI
 on:
   push:
     branches:
-    - master
+    - main
   pull_request:
     branches:
-    - master
+    - main
 
 # A newer push to a pull request makes the running check obsolete, so cancel it
-# instead of paying for both. Runs on master are left alone: they publish images.
+# instead of paying for both. Runs on main are left alone: they publish images.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -72,7 +72,7 @@ jobs:
     uses: ./.github/workflows/image.yml
     with:
       # A pull request throws the image away, so only the host architecture is built
-      # there. Pushes to master publish both.
+      # there. Pushes to main publish both.
       platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
       push: ${{ github.event_name != 'pull_request' }}
       tags: |

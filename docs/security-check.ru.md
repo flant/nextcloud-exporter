@@ -338,7 +338,7 @@ nextcloud_system_update_available{version="34.0.0.1",available_version="34.0.3.2
 
 | Файл | Роль |
 |---|---|
-| `ci.yml` | push в master и pull request: линтеры, тесты, образ |
+| `ci.yml` | push в main и pull request: линтеры, тесты, образ |
 | `release.yml` | теги `v*`: тесты и публикация образа |
 | `image.yml` | общая сборка образа, вызывается из двух предыдущих |
 
