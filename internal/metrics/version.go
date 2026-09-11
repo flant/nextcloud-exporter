@@ -1,22 +1,22 @@
 package metrics
 
-// Сравнение версий Nextcloud.
+// Comparison of Nextcloud versions.
 //
-// Версии здесь приходят с разным числом компонентов: Nextcloud сообщает свою версию
-// четырьмя числами ("34.0.2.1"), а advisories указывают исправленные версии тремя
-// ("34.0.1"). Сравнивать их как строки нельзя: "34.0.10" меньше "34.0.9" в
-// лексикографическом порядке, хотя по смыслу больше.
+// Versions arrive here with a differing number of components: Nextcloud reports its own
+// version as four numbers ("34.0.2.1"), while advisories name the patched versions with
+// three ("34.0.1"). They cannot be compared as strings: "34.0.10" sorts below "34.0.9"
+// lexicographically even though it is the later version.
 
 import (
 	"strconv"
 	"strings"
 )
 
-// version — версия, разобранная на числовые компоненты.
+// version is a version parsed into its numeric components.
 type version []int
 
-// parseVersion разбирает "34.0.2.1" в [34, 0, 2, 1].
-// Второе возвращаемое значение равно false, если строка версией не является.
+// parseVersion parses "34.0.2.1" into [34, 0, 2, 1].
+// The second return value is false if the string is not a version.
 func parseVersion(raw string) (version, bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -37,7 +37,7 @@ func parseVersion(raw string) (version, bool) {
 	return result, true
 }
 
-// major возвращает номер ветки — первый компонент версии.
+// major returns the branch number, which is the first component of the version.
 func (v version) major() int {
 	if len(v) == 0 {
 		return -1
@@ -46,11 +46,11 @@ func (v version) major() int {
 	return v[0]
 }
 
-// compare сравнивает версии покомпонентно и возвращает -1, 0 или 1.
+// compare compares versions component by component and returns -1, 0 or 1.
 //
-// Отсутствующие компоненты считаются нулём, поэтому 34.0.1 и 34.0.1.0 равны, а 34.0.2.1
-// больше 34.0.2. Это и позволяет сравнивать четырёхкомпонентную версию Nextcloud с
-// трёхкомпонентной из advisories.
+// Missing components count as zero, so 34.0.1 and 34.0.1.0 are equal while 34.0.2.1 is
+// greater than 34.0.2. That is what makes a four-component Nextcloud version comparable
+// to a three-component one from the advisories.
 func (v version) compare(other version) int {
 	length := max(len(v), len(other))
 

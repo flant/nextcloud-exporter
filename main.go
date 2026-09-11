@@ -81,8 +81,8 @@ func main() {
 		log.Warn("HTTPS certificate verification is disabled.")
 	}
 
-	// Проверка исправлений безопасности включается вместе с метрикой обновления и
-	// отдельной опции не имеет.
+	// The security-fix check is tied to the update metric and has no option of its
+	// own.
 	var securityChecker *metrics.SecurityChecker
 	if cfg.Info.Update {
 		securityChecker = metrics.NewSecurityChecker(log, userAgent)

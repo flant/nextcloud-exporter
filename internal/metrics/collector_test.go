@@ -10,7 +10,7 @@ import (
 	"github.com/xperimental/nextcloud-exporter/serverinfo"
 )
 
-// collectedUpdate прогоняет collectUpdate и разбирает единственную полученную метрику.
+// collectedUpdate runs collectUpdate and parses the single metric it produces.
 func collectedUpdate(t *testing.T, current, available string, updateAvailable bool, security *SecurityChecker) (float64, map[string]string) {
 	t.Helper()
 
@@ -19,7 +19,7 @@ func collectedUpdate(t *testing.T, current, available string, updateAvailable bo
 	status.Data.Nextcloud.System.Update.Available = updateAvailable
 	status.Data.Nextcloud.System.Update.AvailableVersion = available
 
-	// Канал с буфером: collectUpdate пишет в него синхронно, читателя в тесте нет.
+	// A buffered channel: collectUpdate writes to it synchronously and the test has no reader.
 	ch := make(chan prometheus.Metric, 4)
 	if err := collectUpdate(ch, status, security); err != nil {
 		t.Fatalf("collectUpdate() failed: %s", err)
@@ -49,7 +49,7 @@ func TestCollectUpdate(t *testing.T) {
 	stale := testSnapshotOf(testFix{cve: "CVE-2026-0001", patched: "34.0.1"})
 	stale.fetchedAt = time.Now().Add(-advisoriesMaxAge - time.Hour)
 
-	// Пять исправлений в диапазоне обновления.
+	// Five fixes inside the update range.
 	many := testSnapshotOf(
 		testFix{cve: "CVE-2022-0005", patched: "34.0.1"},
 		testFix{cve: "CVE-2026-0001", patched: "34.0.1"},
@@ -68,7 +68,7 @@ func TestCollectUpdate(t *testing.T) {
 		wantAvailable   string
 	}{
 		{
-			desc:            "проверяльщика нет",
+			desc:            "no checker at all",
 			security:        nil,
 			current:         "34.0.0.1",
 			available:       "34.0.3.1",
@@ -77,7 +77,7 @@ func TestCollectUpdate(t *testing.T) {
 			wantAvailable:   "false",
 		},
 		{
-			desc:            "данных ещё нет, сообщаем об обновлении",
+			desc:            "no data yet, report the update",
 			security:        testChecker(nil),
 			current:         "34.0.0.1",
 			available:       "34.0.3.1",
@@ -86,7 +86,7 @@ func TestCollectUpdate(t *testing.T) {
 			wantAvailable:   "false",
 		},
 		{
-			desc:            "данные просрочены, сообщаем об обновлении",
+			desc:            "data is stale, report the update",
 			security:        testChecker(stale),
 			current:         "34.0.2.1",
 			available:       "34.0.3.1",
@@ -95,7 +95,7 @@ func TestCollectUpdate(t *testing.T) {
 			wantAvailable:   "false",
 		},
 		{
-			desc:            "есть исправление безопасности",
+			desc:            "a security fix is present",
 			security:        testChecker(fresh),
 			current:         "34.0.0.1",
 			available:       "34.0.3.1",
@@ -104,7 +104,7 @@ func TestCollectUpdate(t *testing.T) {
 			wantAvailable:   "true",
 		},
 		{
-			desc:            "обновление без исправлений безопасности",
+			desc:            "update without security fixes",
 			security:        testChecker(fresh),
 			current:         "34.0.2.1",
 			available:       "34.0.3.1",
@@ -113,9 +113,9 @@ func TestCollectUpdate(t *testing.T) {
 			wantAvailable:   "true",
 		},
 		{
-			// Несколько исправлений сразу: на значение метрики это не влияет, список
-			// уходит в лог.
-			desc:            "несколько исправлений безопасности",
+			// Several fixes at once: this does not affect the metric value, the list goes
+			// to the log.
+			desc:            "several security fixes",
 			security:        testChecker(many),
 			current:         "34.0.0.1",
 			available:       "34.0.3.1",
@@ -124,8 +124,9 @@ func TestCollectUpdate(t *testing.T) {
 			wantAvailable:   "true",
 		},
 		{
-			// Метка описывает состояние источника, поэтому осмысленна и когда обновления нет.
-			desc:            "обновления нет вовсе",
+			// The label describes the state of the source, so it is meaningful even when
+			// there is no update.
+			desc:            "no update at all",
 			security:        testChecker(fresh),
 			current:         "34.0.3.1",
 			available:       "",
@@ -134,8 +135,8 @@ func TestCollectUpdate(t *testing.T) {
 			wantAvailable:   "true",
 		},
 		{
-			// Nextcloud выставляет флаг обновления и когда версия та же самая.
-			desc:            "флаг обновления при совпадающих версиях",
+			// Nextcloud sets the update flag even when the version is the same.
+			desc:            "update flag with matching versions",
 			security:        testChecker(fresh),
 			current:         "34.0.3.1",
 			available:       "34.0.3.1",
@@ -159,7 +160,7 @@ func TestCollectUpdate(t *testing.T) {
 				t.Errorf("advisories_available = %q, want %q", got, tc.wantAvailable)
 			}
 
-			// Существующие метки должны остаться на месте и не поменять смысл.
+			// The existing labels must stay in place and keep their meaning.
 			if got := labels["version"]; got != tc.current {
 				t.Errorf("version = %q, want %q", got, tc.current)
 			}

@@ -14,8 +14,8 @@ func TestIsNextcloudServer(t *testing.T) {
 		{Ecosystem: "Nextcloud", Name: "server"},
 		{Ecosystem: " nextcloud ", Name: " Nextcloud Server "},
 		{Ecosystem: "nextcloud", Name: "nextcloud/server"},
-		// Примерно у пятой части записей ecosystem не заполнен, продукт назван полным
-		// именем. Без этого терялся 21 реальный advisory.
+		// In roughly a fifth of the records the ecosystem is not filled in and the product
+		// is named in full. Without this, 21 real advisories were lost.
 		{Ecosystem: "", Name: "Nextcloud Server"},
 	}
 	for _, pkg := range accepted {
@@ -25,15 +25,15 @@ func TestIsNextcloudServer(t *testing.T) {
 	}
 
 	rejected := []advisoryPackage{
-		// Платная редакция: версии из четырёх чисел без публичных релизов.
+		// The paid edition: four-number versions with no public releases.
 		{Ecosystem: "nextcloud enterprise", Name: "Server"},
 		{Ecosystem: "nextcloud entreprise", Name: "Server"},
 		{Ecosystem: "nextcloud", Name: "Enterprise Server"},
-		// Другие продукты Nextcloud с пересекающимися номерами версий.
+		// Other Nextcloud products whose version numbers overlap with the server ones.
 		{Ecosystem: "nextcloud", Name: "Talk"},
 		{Ecosystem: "nextcloud", Name: "Deck"},
 		{Ecosystem: "composer", Name: "nextcloud/server"},
-		// Пустой ecosystem не должен пропускать чужие продукты.
+		// An empty ecosystem must not let foreign products through.
 		{Ecosystem: "", Name: "Nextcloud Talk"},
 		{Ecosystem: "", Name: "Nextcloud Mail"},
 		{Ecosystem: "", Name: "Nextcloud Android Client"},
@@ -52,7 +52,7 @@ func TestParsePatchedVersions(t *testing.T) {
 		want []string
 	}{
 		{
-			desc: "обычный список по одной версии на ветку",
+			desc: "an ordinary list with one version per branch",
 			vuln: advisoryVulnerability{
 				VulnerableVersionRange: ">= 32.0.10, >= 33.0.4, >= 34.0.0",
 				PatchedVersions:        "32.0.12, 33.0.6, 34.0.1",
@@ -60,13 +60,13 @@ func TestParsePatchedVersions(t *testing.T) {
 			want: []string{"32.0.12", "33.0.6", "34.0.1"},
 		},
 		{
-			desc: "одна версия без оператора",
+			desc: "a single version without an operator",
 			vuln: advisoryVulnerability{PatchedVersions: "31.0.1"},
 			want: []string{"31.0.1"},
 		},
 		{
-			// CVE-2025-47791: поля перепутаны местами.
-			desc: "перепутанные поля берутся из диапазона",
+			// CVE-2025-47791: the fields are swapped.
+			desc: "swapped fields are taken from the range",
 			vuln: advisoryVulnerability{
 				VulnerableVersionRange: "28.0.13, 29.0.10, 30.0.3",
 				PatchedVersions:        ">= 28.0.0, >= 29.0.0, >= 30.0.0",
@@ -74,7 +74,7 @@ func TestParsePatchedVersions(t *testing.T) {
 			want: []string{"28.0.13", "29.0.10", "30.0.3"},
 		},
 		{
-			desc: "неравенства в обоих полях дают пусто",
+			desc: "inequalities in both fields yield nothing",
 			vuln: advisoryVulnerability{
 				VulnerableVersionRange: ">=32.0.0, >=33.0.0",
 				PatchedVersions:        ">= 32.0.0",
@@ -82,7 +82,7 @@ func TestParsePatchedVersions(t *testing.T) {
 			want: nil,
 		},
 		{
-			desc: "пробел в начале не мешает",
+			desc: "a leading space does not get in the way",
 			vuln: advisoryVulnerability{PatchedVersions: " 29.0.13, 30.0.7"},
 			want: []string{"29.0.13", "30.0.7"},
 		},
@@ -118,10 +118,10 @@ func TestParseFixes(t *testing.T) {
 		advisory  advisory
 		wantFixes int
 	}{
-		{"обычная запись", advisory{GHSAID: "GHSA-ok", Vulnerabilities: []advisoryVulnerability{serverVuln}}, 1},
-		{"отозванная отбрасывается", advisory{GHSAID: "GHSA-w", WithdrawnAt: &withdrawn, Vulnerabilities: []advisoryVulnerability{serverVuln}}, 0},
+		{"an ordinary record", advisory{GHSAID: "GHSA-ok", Vulnerabilities: []advisoryVulnerability{serverVuln}}, 1},
+		{"a withdrawn one is discarded", advisory{GHSAID: "GHSA-w", WithdrawnAt: &withdrawn, Vulnerabilities: []advisoryVulnerability{serverVuln}}, 0},
 		{
-			desc: "только платная редакция",
+			desc: "the paid edition only",
 			advisory: advisory{GHSAID: "GHSA-ent", Vulnerabilities: []advisoryVulnerability{{
 				Package:         advisoryPackage{Ecosystem: "nextcloud enterprise", Name: "Server"},
 				PatchedVersions: "31.0.14.5",
@@ -129,7 +129,7 @@ func TestParseFixes(t *testing.T) {
 			wantFixes: 0,
 		},
 		{
-			desc: "без разобранных версий",
+			desc: "no parsable versions",
 			advisory: advisory{GHSAID: "GHSA-none", Vulnerabilities: []advisoryVulnerability{{
 				Package:                advisoryPackage{Ecosystem: "nextcloud", Name: "Server"},
 				VulnerableVersionRange: ">= 32.0.0",
@@ -156,7 +156,7 @@ func TestAdvisoryFixID(t *testing.T) {
 		t.Errorf("id() = %q, want the CVE number", got)
 	}
 
-	// У части записей номер CVE ещё не присвоен.
+	// Some records have no CVE number assigned yet.
 	withoutCVE := advisoryFix{ghsaID: "GHSA-x"}
 	if got := withoutCVE.id(); got != "GHSA-x" {
 		t.Errorf("id() = %q, want the GHSA identifier", got)
@@ -164,8 +164,8 @@ func TestAdvisoryFixID(t *testing.T) {
 }
 
 func TestAdvisoryFixFixes(t *testing.T) {
-	// Реальная запись GHSA-99gw-ww6p-f2rr (CVE-2026-61527): исправлена в 32.0.12,
-	// 33.0.6 и 34.0.1.
+	// The real record GHSA-99gw-ww6p-f2rr (CVE-2026-61527): fixed in 32.0.12, 33.0.6
+	// and 34.0.1.
 	threeBranches := []string{"32.0.12", "33.0.6", "34.0.1"}
 
 	tt := []struct {
@@ -175,22 +175,23 @@ func TestAdvisoryFixFixes(t *testing.T) {
 		available string
 		want      bool
 	}{
-		{"исправление приедет с обновлением", threeBranches, "32.0.5.2", "32.0.14.1", true},
-		{"исправление уже установлено", threeBranches, "32.0.12.1", "32.0.14.1", false},
-		{"исправление приедет, другая ветка", threeBranches, "34.0.0.12", "34.0.3.1", true},
-		{"исправление уже установлено, другая ветка", threeBranches, "34.0.2.1", "34.0.3.1", false},
+		{"the fix arrives with the update", threeBranches, "32.0.5.2", "32.0.14.1", true},
+		{"the fix is already installed", threeBranches, "32.0.12.1", "32.0.14.1", false},
+		{"the fix arrives, a different branch", threeBranches, "34.0.0.12", "34.0.3.1", true},
+		{"the fix is already installed, a different branch", threeBranches, "34.0.2.1", "34.0.3.1", false},
 
-		// Переход между ветками: правило про "уже установлено" обязано отбросить запись,
-		// иначе актуальная старая ветка вечно давала бы ложное срабатывание.
-		{"актуальны на старой ветке, переход на новую", threeBranches, "32.0.14.1", "33.0.6.1", false},
-		{"устарели на старой ветке, переход на новую", threeBranches, "32.0.10.1", "33.0.6.1", true},
+		// Moving between branches: the "already installed" rule has to discard the record,
+		// otherwise an up-to-date old branch would produce a false positive forever.
+		{"up to date on the old branch, moving to the new one", threeBranches, "32.0.14.1", "33.0.6.1", false},
+		{"behind on the old branch, moving to the new one", threeBranches, "32.0.10.1", "33.0.6.1", true},
 
-		{"исправление дальше доступной версии", threeBranches, "32.0.10.1", "32.0.11.1", false},
-		{"все исправления ниже установленной", threeBranches, "34.0.1.1", "34.0.3.1", false},
+		{"the fix is beyond the available version", threeBranches, "32.0.10.1", "32.0.11.1", false},
+		{"every fix is below the installed version", threeBranches, "34.0.1.1", "34.0.3.1", false},
 
-		// Две версии одной ветки: сравнивать надо с большей, иначе 31.0.7 потеряется.
-		{"две версии одной ветки", []string{"31.0.1", "31.0.7"}, "31.0.3.1", "31.0.9.1", true},
-		{"две версии одной ветки, обе установлены", []string{"31.0.1", "31.0.7"}, "31.0.8.1", "31.0.9.1", false},
+		// Two versions of one branch: the higher one is what to compare against, otherwise
+		// 31.0.7 is lost.
+		{"two versions of one branch", []string{"31.0.1", "31.0.7"}, "31.0.3.1", "31.0.9.1", true},
+		{"two versions of one branch, both installed", []string{"31.0.1", "31.0.7"}, "31.0.8.1", "31.0.9.1", false},
 	}
 
 	for _, tc := range tt {
@@ -220,33 +221,33 @@ func TestNextPageURL(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			// GitHub отдаёт следующую страницу по другому пути, с числовым
-			// идентификатором репозитория. Сверять путь нельзя, обход сломается.
-			desc:   "другой путь на том же хосте принимается",
+			// GitHub serves the next page under a different path, with the numeric
+			// repository identifier. Checking the path would break the walk.
+			desc:   "a different path on the same host is accepted",
 			header: `<https://api.github.com/repositories/63675426/security-advisories?after=xyz>; rel="next"`,
 			want:   "https://api.github.com/repositories/63675426/security-advisories?after=xyz",
 		},
 		{
-			// Отвергнутая ссылка это ошибка, а не конец списка: иначе обход молча
-			// вернул бы только уже прочитанные страницы.
-			desc:    "посторонний хост это ошибка",
+			// A rejected link is an error, not the end of the list: otherwise the walk
+			// would silently return only the pages already read.
+			desc:    "a foreign host is an error",
 			header:  `<https://evil.example.com/security-advisories?after=xyz>; rel="next"`,
 			wantErr: true,
 		},
 		{
-			desc:    "испорченная ссылка это ошибка",
+			desc:    "a malformed link is an error",
 			header:  `https://api.github.com/a?p=2; rel="next"`,
 			wantErr: true,
 		},
 		{
-			desc:   "next среди нескольких ссылок",
+			desc:   "next among several links",
 			header: `<https://api.github.com/a?p=1>; rel="prev", <https://api.github.com/a?p=3>; rel="next"`,
 			want:   "https://api.github.com/a?p=3",
 		},
-		// Отсутствие ссылки на следующую страницу это нормальный конец обхода.
-		{desc: "без rel=next", header: `<https://api.github.com/a>; rel="last"`},
-		{desc: "пустой заголовок"},
-		{desc: "мусор", header: "garbage"},
+		// The absence of a next-page link is the normal end of the walk.
+		{desc: "no rel=next", header: `<https://api.github.com/a>; rel="last"`},
+		{desc: "an empty header"},
+		{desc: "garbage", header: "garbage"},
 	}
 
 	for _, tc := range tt {
@@ -273,9 +274,9 @@ func TestNextPageURL(t *testing.T) {
 	}
 }
 
-// Обход не должен уходить на посторонний хост, но и молча останавливаться на нём тоже:
-// уже прочитанные страницы это самые старые записи, и на них все свежие обновления
-// безопасности выглядели бы как рядовые.
+// The walk must not wander off to a foreign host, but it must not silently stop there
+// either: the pages already read are the oldest records, and against them every recent
+// security update would look like an ordinary one.
 func TestFetchAllFailsOnForeignNextLink(t *testing.T) {
 	fetcher := testFetcher(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Link", `<https://evil.example.com/advisories?after=xyz>; rel="next"`)
@@ -292,7 +293,7 @@ func TestFetchAllFailsOnForeignNextLink(t *testing.T) {
 	}
 }
 
-// testFetcher отдаёт проверяльщику локальный сервер вместо GitHub.
+// testFetcher hands the checker a local server instead of GitHub.
 func testFetcher(t *testing.T, handler http.HandlerFunc) *advisoryFetcher {
 	t.Helper()
 
@@ -305,8 +306,8 @@ func testFetcher(t *testing.T, handler http.HandlerFunc) *advisoryFetcher {
 	return fetcher
 }
 
-// Список advisories не помещается на одну страницу, поэтому обход обязан идти по
-// заголовку Link и склеивать страницы.
+// The advisory list does not fit on a single page, so the walk has to follow the Link
+// header and stitch the pages together.
 func TestFetchAllFollowsPagination(t *testing.T) {
 	var seenAgent string
 
@@ -318,7 +319,7 @@ func TestFetchAllFollowsPagination(t *testing.T) {
 			w.Header().Set("Link", fmt.Sprintf(`<http://%s/?page=2>; rel="next"`, r.Host))
 			fmt.Fprint(w, `[{"ghsa_id":"GHSA-1"},{"ghsa_id":"GHSA-2"}]`)
 		case "2":
-			// Последняя страница: заголовка Link нет, обход должен остановиться.
+			// The last page: there is no Link header and the walk must stop.
 			fmt.Fprint(w, `[{"ghsa_id":"GHSA-3"}]`)
 		default:
 			t.Errorf("unexpected page %q", r.URL.Query().Get("page"))
@@ -346,8 +347,8 @@ func TestFetchAllFollowsPagination(t *testing.T) {
 	}
 }
 
-// Неполный список выглядел бы как отсутствие уязвимостей и мог бы скрыть обновление
-// безопасности, поэтому ошибка на любой странице обязана отменить всю выкачку.
+// An incomplete list would look like an absence of vulnerabilities and could hide a
+// security update, so an error on any page has to cancel the entire fetch.
 func TestFetchAllFailsOnPartialResult(t *testing.T) {
 	tt := []struct {
 		desc     string
@@ -355,12 +356,12 @@ func TestFetchAllFailsOnPartialResult(t *testing.T) {
 		wantText string
 	}{
 		{
-			desc:     "вторая страница отвечает ошибкой",
+			desc:     "the second page answers with an error",
 			second:   func(w http.ResponseWriter) { w.WriteHeader(http.StatusForbidden) },
 			wantText: "403",
 		},
 		{
-			desc: "вторая страница отвечает мусором",
+			desc: "the second page answers with garbage",
 			second: func(w http.ResponseWriter) {
 				fmt.Fprint(w, `not json`)
 			},
@@ -394,7 +395,7 @@ func TestFetchAllFailsOnPartialResult(t *testing.T) {
 	}
 }
 
-// Зацикленный на себя Link не должен приводить к бесконечному обходу.
+// A Link header pointing at itself must not lead to an endless walk.
 func TestFetchAllStopsOnTooManyPages(t *testing.T) {
 	fetcher := testFetcher(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Link", fmt.Sprintf(`<http://%s/?page=next>; rel="next"`, r.Host))

@@ -13,17 +13,13 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// testChecker собирает SecurityChecker вручную, минуя NewSecurityChecker, чтобы задать
-// снимок напрямую. Тесты лежат в том же пакете, поэтому неэкспортированные поля доступны.
 func testChecker(snapshot *advisorySnapshot) *SecurityChecker {
 	log := logrus.New()
-	// io.Discard, а не nil: logrus пишет в этот writer безусловно и на nil падает.
 	log.SetOutput(io.Discard)
 
 	return &SecurityChecker{log: log, snapshot: snapshot}
 }
 
-// testCheckerWithLog отдаёт проверяльщик вместе с буфером, куда пишется лог.
 func testCheckerWithLog(snapshot *advisorySnapshot) (*SecurityChecker, *bytes.Buffer) {
 	var buf bytes.Buffer
 
@@ -33,7 +29,6 @@ func testCheckerWithLog(snapshot *advisorySnapshot) (*SecurityChecker, *bytes.Bu
 	return &SecurityChecker{log: log, snapshot: snapshot}, &buf
 }
 
-// countLines считает непустые строки в логе.
 func countLines(buf *bytes.Buffer) int {
 	count := 0
 	for _, line := range strings.Split(buf.String(), "\n") {
@@ -55,14 +50,11 @@ func testSnapshot(patched ...string) *advisorySnapshot {
 	return &advisorySnapshot{fixes: []advisoryFix{fix}, fetchedAt: time.Now()}
 }
 
-// testFix — одна запись для снимка: номер уязвимости и версия, где она исправлена.
 type testFix struct {
 	cve     string
 	patched string
 }
 
-// testSnapshotOf собирает снимок из нескольких записей. Порядок записей в снимке
-// намеренно не совпадает с ожидаемым порядком в результате: Check обязан сортировать сам.
 func testSnapshotOf(fixes ...testFix) *advisorySnapshot {
 	snapshot := &advisorySnapshot{fetchedAt: time.Now()}
 	for _, f := range fixes {
@@ -87,9 +79,9 @@ func TestAvailable(t *testing.T) {
 		snapshot *advisorySnapshot
 		want     bool
 	}{
-		{"снимка ещё нет", nil, false},
-		{"снимок свежий", fresh, true},
-		{"снимок просрочен", stale, false},
+		{"no snapshot yet", nil, false},
+		{"snapshot is fresh", fresh, true},
+		{"snapshot is stale", stale, false},
 	}
 
 	for _, tc := range tt {
@@ -103,8 +95,6 @@ func TestAvailable(t *testing.T) {
 	}
 }
 
-// Проверяльщик равен nil, когда метрика обновления выключена. Вызывающий не обязан
-// проверять это сам, поэтому методы обязаны отвечать "не знаю", а не падать.
 func TestNilCheckerAnswersUnknown(t *testing.T) {
 	var checker *SecurityChecker
 
@@ -136,14 +126,14 @@ func TestCheck(t *testing.T) {
 		wantFixed []string
 		wantOK    bool
 	}{
-		{"снимка ещё нет", nil, "34.0.0.1", "34.0.3.1", nil, false},
-		{"снимок просрочен", stale, "34.0.0.1", "34.0.3.1", nil, false},
-		{"версия не разобралась", withCVE, "34.0.0 RC1", "34.0.3.1", nil, false},
-		{"исправление найдено", withCVE, "34.0.0.1", "34.0.3.1", []string{"CVE-2026-0001"}, true},
-		{"исправлений нет", withCVE, "34.0.2.1", "34.0.3.1", nil, true},
+		{"no snapshot yet", nil, "34.0.0.1", "34.0.3.1", nil, false},
+		{"snapshot is stale", stale, "34.0.0.1", "34.0.3.1", nil, false},
+		{"version did not parse", withCVE, "34.0.0 RC1", "34.0.3.1", nil, false},
+		{"a fix was found", withCVE, "34.0.0.1", "34.0.3.1", []string{"CVE-2026-0001"}, true},
+		{"no fixes", withCVE, "34.0.2.1", "34.0.3.1", nil, true},
 		{
-			// У части записей номер CVE не присвоен, тогда в результат идёт GHSA.
-			desc:      "без номера CVE используется GHSA",
+			// Some records have no CVE number assigned, and then the GHSA goes into the result.
+			desc:      "the GHSA is used when there is no CVE number",
 			snapshot:  &advisorySnapshot{fetchedAt: time.Now(), fixes: []advisoryFix{{ghsaID: "GHSA-only", patchedVersions: []version{{34, 0, 1}}}}},
 			current:   "34.0.0.1",
 			available: "34.0.3.1",
@@ -178,15 +168,15 @@ func TestCheck(t *testing.T) {
 	}
 }
 
-// Check обязан собрать все совпадения, а не остановиться на первом, и отдать их в
-// детерминированном порядке: список уходит в лог, и переставленный порядок читался бы
-// как новый результат.
+// Check must collect every match rather than stop at the first one, and return them in a
+// deterministic order: the list goes to the log, and a reshuffled order would read as a
+// new result.
 func TestCheckCollectsAllSortedNewestFirst(t *testing.T) {
 	snapshot := testSnapshotOf(
 		testFix{cve: "CVE-2025-0002", patched: "34.0.1"},
 		testFix{cve: "CVE-2026-0001", patched: "34.0.2"},
 		testFix{cve: "CVE-2024-0003", patched: "34.0.3"},
-		// Это исправление уже установлено, в результат попасть не должно.
+		// This fix is already installed and must not reach the result.
 		testFix{cve: "CVE-2020-9999", patched: "34.0.0"},
 	)
 
@@ -207,8 +197,8 @@ func TestCheckCollectsAllSortedNewestFirst(t *testing.T) {
 	}
 }
 
-// Check вызывается на каждый скрейп, поэтому одинаковый результат не должен повторяться
-// в логе. Строка обязана появиться один раз и потом молчать, пока результат не изменится.
+// Check is called on every scrape, so an identical result must not be repeated in the
+// log. The line has to appear once and then stay silent until the result changes.
 func TestCheckLogsOnlyOnChange(t *testing.T) {
 	snapshot := testSnapshotOf(testFix{cve: "CVE-2026-0001", patched: "34.0.1"})
 	checker, buf := testCheckerWithLog(snapshot)
@@ -218,31 +208,31 @@ func TestCheckLogsOnlyOnChange(t *testing.T) {
 	}
 
 	if got := countLines(buf); got != 1 {
-		t.Errorf("пять одинаковых проверок дали %d строк лога, ожидалась 1:\n%s", got, buf.String())
+		t.Errorf("five identical checks produced %d log lines, want 1:\n%s", got, buf.String())
 	}
 
 	if !strings.Contains(buf.String(), "CVE-2026-0001") {
-		t.Errorf("в логе нет номера уязвимости:\n%s", buf.String())
+		t.Errorf("the log has no vulnerability number:\n%s", buf.String())
 	}
 
-	// Изменилась версия Nextcloud — результат другой, значит строка должна появиться.
+	// The Nextcloud version changed, so the result differs and the line must appear.
 	buf.Reset()
 	checker.Check("34.0.2.1", "34.0.3.1")
 
 	if got := countLines(buf); got != 1 {
-		t.Errorf("после смены версии получено %d строк лога, ожидалась 1:\n%s", got, buf.String())
+		t.Errorf("after the version change there were %d log lines, want 1:\n%s", got, buf.String())
 	}
 
-	// И снова молчит, пока результат тот же.
+	// And it goes quiet again while the result stays the same.
 	buf.Reset()
 	checker.Check("34.0.2.1", "34.0.3.1")
 
 	if got := countLines(buf); got != 0 {
-		t.Errorf("повтор того же результата дал %d строк лога, ожидалось 0:\n%s", got, buf.String())
+		t.Errorf("repeating the same result produced %d log lines, want 0:\n%s", got, buf.String())
 	}
 }
 
-// Предупреждение о недоступных данных тоже не должно повторяться на каждом скрейпе.
+// The warning about unavailable data must not repeat on every scrape either.
 func TestCheckWarningLogsOnlyOnce(t *testing.T) {
 	checker, buf := testCheckerWithLog(nil)
 
@@ -251,13 +241,13 @@ func TestCheckWarningLogsOnlyOnce(t *testing.T) {
 	}
 
 	if got := countLines(buf); got != 1 {
-		t.Errorf("три проверки без данных дали %d строк лога, ожидалась 1:\n%s", got, buf.String())
+		t.Errorf("three checks without data produced %d log lines, want 1:\n%s", got, buf.String())
 	}
 }
 
-// refresh разбирает данные GitHub и обязан заново вывести разбор, даже если словесно
-// результат совпал с предыдущим: список уязвимостей должен попадать в stdout после
-// каждой выкачки, а не один раз за жизнь процесса.
+// refresh parses the GitHub data and must print the verdict again even when its wording
+// matches the previous one: the list of vulnerabilities has to reach stdout after every
+// fetch, not once per process lifetime.
 func TestRefreshLogsAdvisoriesAndRepeatsResult(t *testing.T) {
 	const page = `[{
 		"ghsa_id": "GHSA-1",
@@ -280,14 +270,14 @@ func TestRefreshLogsAdvisoriesAndRepeatsResult(t *testing.T) {
 	checker.Check("34.0.0.1", "34.0.3.1")
 
 	if !strings.Contains(buf.String(), "loaded 1 advisories") {
-		t.Errorf("в логе нет сообщения о загрузке:\n%s", buf.String())
+		t.Errorf("the log has no message about the load:\n%s", buf.String())
 	}
 
 	if !strings.Contains(buf.String(), "CVE-2026-0001") {
-		t.Errorf("в логе нет номера уязвимости:\n%s", buf.String())
+		t.Errorf("the log has no vulnerability number:\n%s", buf.String())
 	}
 
-	// Тот же результат после новой выкачки обязан появиться в логе снова.
+	// The same result after a new fetch must appear in the log again.
 	buf.Reset()
 
 	if err := checker.refresh(context.Background()); err != nil {
@@ -297,12 +287,50 @@ func TestRefreshLogsAdvisoriesAndRepeatsResult(t *testing.T) {
 	checker.Check("34.0.0.1", "34.0.3.1")
 
 	if !strings.Contains(buf.String(), "CVE-2026-0001") {
-		t.Errorf("после повторной выкачки разбор не выведен заново:\n%s", buf.String())
+		t.Errorf("the verdict was not printed again after a repeated fetch:\n%s", buf.String())
 	}
 }
 
-// Ответ без единой пригодной записи про Nextcloud Server — это сломанные данные, а не
-// "уязвимостей нет". Старый снимок обязан пережить такую выкачку.
+// The verdict has to reach the log on the fact of the advisories being loaded, with no
+// scrape involved: the line listing the CVEs must not depend on whether anyone pulled
+// /metrics.
+func TestRefreshLogsResultWithoutScrape(t *testing.T) {
+	const page = `[{
+		"ghsa_id": "GHSA-1",
+		"cve_id": "CVE-2026-61527",
+		"vulnerabilities": [{
+			"package": {"ecosystem": "nextcloud", "name": "Server"},
+			"patched_versions": "33.0.8"
+		}]
+	}]`
+
+	checker, buf := testCheckerWithLog(nil)
+	checker.fetcher = testFetcher(t, func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, page)
+	})
+
+	// The single scrape reports the versions and prints the verdict: before it the fetch
+	// had nothing to say about the server.
+	checker.Check("33.0.4.1", "33.0.8.2")
+
+	// There are no scrapes after this, and the next fetch must print the verdict itself.
+	buf.Reset()
+
+	if err := checker.refresh(context.Background()); err != nil {
+		t.Fatalf("refresh() failed: %s", err)
+	}
+
+	if !strings.Contains(buf.String(), "CVE-2026-61527") {
+		t.Errorf("the fetch did not print the verdict without a scrape:\n%s", buf.String())
+	}
+
+	if !strings.Contains(buf.String(), "33.0.4.1 -> 33.0.8.2") {
+		t.Errorf("the verdict is missing the version pair from the last scrape:\n%s", buf.String())
+	}
+}
+
+// A response without a single usable Nextcloud Server record is broken data, not "there
+// are no vulnerabilities". The old snapshot must survive such a fetch.
 func TestRefreshKeepsSnapshotOnUnusableResponse(t *testing.T) {
 	checker, _ := testCheckerWithLog(testSnapshot("34.0.1"))
 	checker.fetcher = testFetcher(t, func(w http.ResponseWriter, _ *http.Request) {

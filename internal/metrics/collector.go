@@ -104,9 +104,9 @@ type nextcloudCollector struct {
 	scrapeErrorsMetric *prometheus.CounterVec
 }
 
-// RegisterCollector регистрирует коллектор. Аргумент security может быть nil, тогда
-// проверка исправлений безопасности не выполняется и nextcloud_system_update_available
-// сообщает о любом доступном обновлении.
+// RegisterCollector registers the collector. The security argument may be nil, in which
+// case the security-fix check is not performed and nextcloud_system_update_available
+// reports every available update.
 func RegisterCollector(log logrus.FieldLogger, infoClient client.InfoClient, appsMetrics bool, updateMetrics bool, security *SecurityChecker) error {
 	c := &nextcloudCollector{
 		log:           log,
@@ -292,17 +292,11 @@ func collectUpdate(ch chan<- prometheus.Metric, status *serverinfo.ServerInfo, s
 	systemInfo := status.Data.Nextcloud.System
 	updateAvailableValue := 0.0
 
-	// Метка описывает состояние источника advisories, а не решение по этой конкретной
-	// паре версий. Поэтому она осмысленна и когда обновления нет вовсе: по ней видно,
-	// работает ли проверка в принципе.
 	advisoriesAvailable := strconv.FormatBool(security.Available())
 
-	// Fix small bug: its indicated as "true" even if there is no real update available.
 	if systemInfo.Update.Available && systemInfo.Version != systemInfo.Update.AvailableVersion {
 		updateAvailableValue = 1.0
 
-		// Список закрываемых уязвимостей в метрику не попадает: он целиком пишется в
-		// лог внутри Check. Здесь важно только, пуст он или нет.
 		if fixed, ok := security.Check(systemInfo.Version, systemInfo.Update.AvailableVersion); ok && len(fixed) == 0 {
 			updateAvailableValue = 0.0
 		}

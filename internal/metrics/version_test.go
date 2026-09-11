@@ -47,11 +47,11 @@ func TestVersionCompare(t *testing.T) {
 		b    string
 		want int
 	}{
-		{"четыре компонента против трёх", "34.0.2.1", "34.0.2", 1},
-		{"отсутствующий компонент это ноль", "34.0.1", "34.0.1.0", 0},
-		{"числовое, а не строковое сравнение", "34.0.10", "34.0.9", 1},
-		{"разные патчи", "32.0.5.2", "32.0.12", -1},
-		{"разные ветки", "33.0.0.0", "32.0.14.1", 1},
+		{"four components against three", "34.0.2.1", "34.0.2", 1},
+		{"a missing component is a zero", "34.0.1", "34.0.1.0", 0},
+		{"numeric rather than string comparison", "34.0.10", "34.0.9", 1},
+		{"different patch levels", "32.0.5.2", "32.0.12", -1},
+		{"different branches", "33.0.0.0", "32.0.14.1", 1},
 	}
 
 	for _, tc := range tt {
@@ -71,7 +71,7 @@ func TestVersionMajor(t *testing.T) {
 		t.Errorf("major() = %d, want 34", got)
 	}
 
-	// Пустая версия не должна совпасть по ветке ни с чем, включая другую пустую.
+	// An empty version must not share a branch with anything, including another empty one.
 	if got := version(nil).major(); got != -1 {
 		t.Errorf("major() of empty version = %d, want -1", got)
 	}
