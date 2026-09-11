@@ -1,9 +1,11 @@
 name: Release
 
+# The "published" type fires both when a release is created directly and when an
+# existing draft is published, which "created" misses. A release built from a tag
+# that already exists emits no push event at all, so this is the only trigger.
 on:
-  push:
-    tags:
-    - 'v*'
+  release:
+    types: [published]
 
 permissions:
   contents: read
