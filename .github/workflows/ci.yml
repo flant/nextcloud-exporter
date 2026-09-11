@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches:
+    - master
+  pull_request:
+    branches:
+    - master
+
+# A newer push to a pull request makes the running check obsolete, so cancel it
+# instead of paying for both. Runs on master are left alone: they publish images.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v5
+    - name: Setup Go
+      uses: actions/setup-go@v6
+      with:
+        # go.mod is the single source of truth for the Go version. Its toolchain
+        # directive also keeps the go command from downloading a toolchain of its
+        # own, which makes the tests fail (golang/go#75031).
+        go-version-file: go.mod
+    - name: golangci-lint
+      uses: golangci/golangci-lint-action@v8
+      with:
+        # Kept in sync with .bingo/golangci-lint.mod so that "make lint-go" locally
+        # and this job report the same findings.
+        version: v2.11.4
+    - name: Cache bingo tools
+      uses: actions/cache@v4
+      with:
+        # bingo names its binaries after the pinned version and rebuilds only what is
+        # missing. Without this, every run compiles promtool from source.
+        path: ~/go/bin
+        key: bingo-${{ runner.os }}-${{ hashFiles('.bingo/*.sum') }}
+    - name: promtool
+      run: make lint-promtool
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        # "make build-binary" stamps the version from "git describe --tags", which is
+        # empty on a shallow clone.
+        fetch-depth: 0
+        filter: blob:none
+    - name: Setup Go
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: go.mod
+    - name: Build and Test
+      run: make
+  image:
+    needs: test
+    permissions:
+      contents: read
+      # A job calling a reusable workflow caps that workflow's permissions, so the
+      # write access ghcr.io needs has to be granted here. Without it the push fails
+      # with "denied: installation not allowed to Write organization package".
+      packages: write
+    uses: ./.github/workflows/image.yml
+    with:
+      # A pull request throws the image away, so only the host architecture is built
+      # there. Pushes to master publish both.
+      platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
+      push: ${{ github.event_name != 'pull_request' }}
+      tags: |
+        type=ref,event=branch
+        type=ref,event=pr

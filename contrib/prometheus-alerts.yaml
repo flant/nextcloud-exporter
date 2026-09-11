@@ -1,0 +1,40 @@
+groups:
+- name: nextcloud
+  rules:
+  - alert: NextcloudUpdateWarning
+    expr: |
+      sum by (instance, version, available_version) (nextcloud_system_update_available) > 0
+    for: 15m
+    annotations:
+      summary: |
+        Security update {{ index $labels "available_version" }} available for Nextcloud server {{ index $labels "instance" }}.
+      description: |
+        The Nextcloud server at {{ index $labels "instance" }} can be updated to version {{ index $labels "available_version" }} (from {{ index $labels "version" }}). The exporter reports this metric only for updates which close a known vulnerability; the identifiers are in its log.
+    labels:
+      severity: warning
+  - alert: NextcloudSecurityCheckUnavailable
+    # While the advisories are unusable the exporter cannot tell a security update
+    # from a routine one and falls back to reporting any available update, so
+    # NextcloudUpdateWarning loses its meaning. A single failed refresh is retried
+    # after 15 minutes, hence the long "for".
+    expr: |
+      max by (instance) (nextcloud_system_update_available{advisories_available="false"}) >= 0
+    for: 6h
+    annotations:
+      summary: |
+        Nextcloud exporter {{ index $labels "instance" }} can not check for security fixes.
+      description: |
+        The exporter at {{ index $labels "instance" }} could not use the GitHub security advisories for the last 6 hours and is reporting any available update instead of only security updates. Check that it can reach api.github.com.
+    labels:
+      severity: warning
+  - alert: NextcloudScrapeErrorsCritical
+    expr: |
+      sum by (instance, cause) (rate(nextcloud_scrape_errors_total[5m])) > 0
+    for: 15m
+    annotations:
+      summary: |
+        Nextcloud server {{ index $labels "instance" }} has scrape errors of type {{ index $labels "cause" }}.
+      description: |
+        The exporter is unable to reach the Nextcloud server at {{ index $labels "instance" }}. The cause is listed as: {{ index $labels "cause" }}
+    labels:
+      severity: critical

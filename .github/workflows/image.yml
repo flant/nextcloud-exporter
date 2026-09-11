@@ -1,0 +1,64 @@
+name: Image
+
+# Called by ci.yml and release.yml so that the build rules live in exactly one place.
+on:
+  workflow_call:
+    inputs:
+      platforms:
+        description: Target platforms for buildx.
+        type: string
+        default: linux/amd64
+      tags:
+        description: Tag rules for docker/metadata-action.
+        type: string
+        required: true
+      push:
+        description: Whether to publish the image to ghcr.io.
+        type: boolean
+        default: false
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        # The Dockerfile runs "make build-binary", which stamps the version from
+        # "git describe --tags" and needs history and tags to do so. The blob:none
+        # filter keeps the history but skips the contents of old files.
+        fetch-depth: 0
+        filter: blob:none
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    # QEMU is deliberately not set up. The builder stage is pinned to $BUILDPLATFORM
+    # and cross-compiles through GOOS/GOARCH, while the final stage only copies files
+    # in and never executes anything. Emulating the target architecture would only
+    # make the build slower.
+    - name: Login to GitHub Container Registry
+      if: inputs.push
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Docker Metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        # ghcr.io/<owner>/<repo> of whichever repository this runs in, so a fork
+        # publishes into its own namespace. metadata-action lowercases the name.
+        images: ghcr.io/${{ github.repository }}
+        tags: ${{ inputs.tags }}
+    - name: Build and push
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        platforms: ${{ inputs.platforms }}
+        push: ${{ inputs.push }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        # Without a layer cache every run downloads the modules and recompiles
+        # everything from scratch.
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
