@@ -1,0 +1,293 @@
+# nextcloud-exporter
+
+A [prometheus](https://prometheus.io) exporter for getting some metrics of a [Nextcloud](https://nextcloud.com/) server instance.
+
+## Installation
+
+### Docker Image
+
+The preferred way to use `nextcloud-exporter` is by running the provided Docker image. It is published to the GitHub Container Registry of whichever repository builds it:
+
+- [`ghcr.io/xperimental/nextcloud-exporter`](https://github.com/xperimental/nextcloud-exporter/pkgs/container/nextcloud-exporter)
+
+The following tags are available:
+
+- `x.y.z` pointing to the release with that version
+- `latest` pointing to the most recent released version
+- `master` pointing to the latest build from the default branch
+
+### Pre-built binaries
+
+The [releases](https://github.com/xperimental/nextcloud-exporter/releases) page contains pre-built binaries for AMD64 and ARM64 linux.
+
+### Build from Source
+
+If you have a recent Go installation (see `go.mod` for the minimum version), Git and GNU Make, the following commands will check out the repository and compile the binary from source:
+
+```bash
+git clone https://github.com/xperimental/nextcloud-exporter.git
+cd nextcloud-exporter
+make
+```
+
+After this there should be a `nextcloud-exporter` binary in your current directory.
+
+## Client credentials
+
+The exporter supports two different approaches for authenticating with the Nextcloud server:
+
+- Token authentication (needs Nextcloud 22 or newer)
+- Username and password
+
+If you have Nextcloud 22 then using the token authentication is recommended, because it does not need a normal user account with admin privileges.
+
+If both a token and username/password are specified in the configuration, the token will take precedence.
+
+### Token authentication
+
+Nextcloud 22 and newer versions support "token authentication" for the serverinfo. That way, accessing this information does not need a normal user account with admin privileges. You can set the token to anything you like, but the recommendation is to set it to a long random number:
+
+```bash
+# Generate random value (for example using openssl)
+TOKEN=$(openssl rand -hex 32)
+# Set token (using the occ console application)
+occ config:app:set serverinfo token --value "$TOKEN"
+```
+
+You can then use this generated token in the exported configuration instead of username and password.
+
+### Username and password authentication
+
+To access the serverinfo API you will need the credentials of an admin user. It is recommended to create a separate user for that purpose. It's also possible for the exporter to generate an "app password", so that the real user password is never saved to the configuration. This also makes the exporter show up in the security panel of the user as a connected application.
+
+To let the nextcloud-exporter create an app password, start it with the `--login` parameter:
+
+```bash
+nextcloud-exporter --login --server https://nextcloud.example.com
+```
+
+The exporter will generate a login URL that you need to open in your browser. Be sure to login with the correct user if you created a special user for the exporter as the app password will be bound to the logged-in user. Once the access has been granted using the browser the exporter will output the username and password that need to be entered into the configuration.
+
+When the login process is done, it is possible to disable filesystem access for the generated token in the user's settings:
+
+![Allow filesystem access checkbox](contrib/allow-filesystem.png)
+
+---
+
+The interactive login can also be done using a Docker container:
+
+```bash
+docker run --rm -it ghcr.io/xperimental/nextcloud-exporter --login --server https://nextcloud.example.com
+```
+
+The login flow needs at least Nextcloud 16 to work.
+
+## Usage
+
+```plain
+$ nextcloud-exporter --help
+Usage of nextcloud-exporter:
+  -a, --addr string          Address to listen on for connections. (default ":9205")
+      --auth-token string    Authentication token. Can replace username and password when using Nextcloud 22 or newer.
+  -c, --config-file string   Path to YAML configuration file.
+      --enable-info-apps     Enable gathering of apps-related metrics.
+      --enable-info-update   Enable metric showing availability of security updates.
+      --login                Use interactive login to create app password.
+  -p, --password string      Password for connecting to Nextcloud.
+  -s, --server string        URL to Nextcloud server.
+  -t, --timeout duration     Timeout for getting server info document. (default 5s)
+      --tls-skip-verify      Skip certificate verification of Nextcloud server.
+  -u, --username string      Username for connecting to Nextcloud.
+  -V, --version              Show version information and exit.
+```
+
+After starting the server will offer the metrics on the `/metrics` endpoint, which can be used as a target for prometheus.
+
+### Example Dashboard
+
+The repository contains an [example Grafana dashboard](contrib/grafana-dashboard.json) that can be imported into Grafana. The dashboard is also available as ID `20716` from the [Grafana Dashboard Exchange](https://grafana.com/grafana/dashboards/20716-nextcloud/).
+
+### Configuration methods
+
+There are three methods of configuring the nextcloud-exporter (higher methods take precedence over lower ones):
+
+- Environment variables
+- Configuration file
+- Command-line parameters
+
+#### Environment variables
+
+All settings can also be specified through environment variables:
+
+|        Environment variable | Flag equivalent      |
+|----------------------------:|:---------------------|
+|          `NEXTCLOUD_SERVER` | --server             |
+|        `NEXTCLOUD_USERNAME` | --username           |
+|        `NEXTCLOUD_PASSWORD` | --password           |
+|      `NEXTCLOUD_AUTH_TOKEN` | --auth-token         |
+|  `NEXTCLOUD_LISTEN_ADDRESS` | --addr               |
+|         `NEXTCLOUD_TIMEOUT` | --timeout            |
+| `NEXTCLOUD_TLS_SKIP_VERIFY` | --tls-skip-verify    |
+|       `NEXTCLOUD_INFO_APPS` | --enable-info-apps   |
+|     `NEXTCLOUD_INFO_UPDATE` | --enable-info-update |
+
+#### Configuration file
+
+The `--config-file` option can be used to read the configuration options from a YAML file:
+
+```yaml
+# required
+server: "https://example.com"
+# required for token authentication
+authToken: "example-token"
+# required for username/password authentication
+username: "example"
+password: "example"
+# optional
+listenAddress: ":9205"
+timeout: "5s"
+tlsSkipVerify: false
+info:
+  apps: false
+  update: false
+```
+
+### Loading Credentials from Files
+
+Both the authentication token and the password can optionally be read from a separate file instead of directly from the input methods above.
+
+This can be achieved by setting the value to the path of the file prefixed with an "@", for example:
+
+```bash
+# Authentication token
+nextcloud-exporter -c config-without-token.yml --auth-token @/path/to/tokenfile
+# Password
+nextcloud-exporter -c config-without-password.yml -p @/path/to/passwordfile
+```
+
+This also works when the password or token is set using one of the other configuration modes (configuration file or environment variables).
+
+## Other information
+
+### Info URL
+
+The exporter reads the metrics from the Nextcloud server using its "serverinfo" API. You can find the URL of this API in the administrator settings in the "Monitoring" section. It should look something like this:
+
+```plain
+https://example.com/ocs/v2.php/apps/serverinfo/api/v1/info
+```
+
+The path will be automatically added to the server URL you provide, so in the above example setting `--server https://example.com` would be sufficient.
+
+If you open this URL in a browser you should see an XML structure with the information that will be used by the exporter.
+
+### Update security check
+
+`nextcloud_system_update_available` reports only updates which actually contain security
+fixes, so that routine patch releases do not raise the update alert. This is always active
+when `--enable-info-update` is used and needs no separate option:
+
+```bash
+nextcloud-exporter --server https://example.com --auth-token "$TOKEN" --enable-info-update
+```
+
+The information comes from the advisories published for
+[nextcloud/security-advisories](https://github.com/nextcloud/security-advisories/security/advisories),
+which is the only machine-readable source that states in which version a given
+vulnerability was fixed. The release notes of `nextcloud/server` cannot be used for this:
+security fixes are merged from private forks and do not appear in the generated changelog.
+
+The `advisories_available` label tells whether those advisories could be used:
+
+```plain
+nextcloud_system_update_available{version="34.0.0.1",available_version="34.0.3.2",advisories_available="true"} 1
+```
+
+Which vulnerabilities an update fixes is written to the log rather than exposed as a label,
+because the list is unbounded: a single update can close dozens of them. The list is
+logged newest first, on the first scrape after the advisories have been loaded:
+
+```plain
+Security check: loaded 127 advisories for Nextcloud Server.
+Security check: update 32.0.5.2 -> 32.0.14.1 contains fixes for 8 vulnerabilities: CVE-2026-61527, CVE-2026-45691, CVE-2026-45690, CVE-2026-45285, CVE-2026-45282, CVE-2026-45281, CVE-2026-45157, CVE-2026-45155.
+```
+
+The line is not repeated on every scrape. It is written once and then only again when the
+result actually changes, or after the advisory list has been fetched anew:
+
+```plain
+Security check: update 34.0.2.1 -> 34.0.3.2 contains no known security fixes.
+```
+
+Advisories without an assigned CVE number are logged by their GHSA identifier instead.
+
+When `advisories_available` is `false`, the check could not be performed and **any**
+available update is reported, which is the behaviour of earlier releases. The bundled
+`NextcloudSecurityCheckUnavailable` alert fires when that lasts:
+
+```plain
+nextcloud_system_update_available{advisories_available="false"} == 1
+```
+
+Things worth knowing:
+
+- **The exporter needs outgoing access to `api.github.com`.** The advisory list is fetched
+  in the background every 12 hours and kept in memory, so a scrape never waits for GitHub
+  and a restart costs one refresh. No token is needed: a full refresh costs three requests,
+  well within GitHub's limit of 60 requests per hour per IP address.
+- **Only the free edition is considered.** Advisories for Nextcloud Enterprise list version
+  numbers which have no matching public release, so they are ignored.
+- **Any uncertainty reports the update.** While the first refresh is still running, when
+  GitHub is unreachable, or when the advisory list is older than 48 hours, the metric stays
+  at `1` and `advisories_available` is `false`. The reason is logged.
+- **The check errs towards reporting an update.** Advisories state the versions which
+  contain the fix, but the affected version ranges in the same records are unreliable, so
+  they are not evaluated. An update may therefore be reported as security relevant even
+  when the installed version was never affected.
+- **There is no "any update available" signal any more.** Non-security updates are no longer
+  reported by this metric. The `available_version` label is still filled in from whatever
+  Nextcloud reports, so `nextcloud_system_update_available{available_version!=""}` comes
+  close to the old signal, but it is not exact: Nextcloud sets its update flag even when
+  the offered version equals the installed one, and the label is then non-empty without
+  there being an update at all. `nextcloud_system_info` still carries the installed version
+  if you want to compare releases yourself.
+
+### Scrape configuration
+
+The exporter will query the nextcloud server every time it is scraped by prometheus. If you want to reduce load on the nextcloud server you need to change the scrape interval accordingly:
+
+```yml
+scrape_configs:
+  - job_name: 'nextcloud'
+    scrape_interval: 90s
+    static_configs:
+      - targets: ['localhost:9205']
+```
+
+### Exported metrics
+
+These metrics are exported by `nextcloud-exporter`:
+
+| name                                   | description                                                                                                                                                                                                                                        |
+|----------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| nextcloud_active_users_daily_total     | Number of active users in the last 24 hours                                                                                                                                                                                                        |
+| nextcloud_active_users_hourly_total    | Number of active users in the last hour                                                                                                                                                                                                            |
+| nextcloud_active_users_total           | Number of active users for the last five minutes                                                                                                                                                                                                   |
+| nextcloud_apps_installed_total         | Number of currently installed apps                                                                                                                                                                                                                 |
+| nextcloud_apps_updates_available_total | Number of apps that have available updates                                                                                                                                                                                                         |
+| nextcloud_database_info                | Contains meta information about the database as labels. Value is always 1.                                                                                                                                                                         |
+| nextcloud_database_size_bytes          | Size of database in bytes as reported from engine                                                                                                                                                                                                  |
+| nextcloud_exporter_info                | Contains meta information of the exporter. Value is always 1.                                                                                                                                                                                      |
+| nextcloud_files_total                  | Number of files served by the instance                                                                                                                                                                                                             |
+| nextcloud_free_space_bytes             | Free disk space in data directory in bytes                                                                                                                                                                                                         |
+| nextcloud_php_info                     | Contains meta information about PHP as labels. Value is always 1.                                                                                                                                                                                  |
+| nextcloud_php_memory_limit_bytes       | Configured PHP memory limit in bytes                                                                                                                                                                                                               |
+| nextcloud_php_upload_max_size_bytes    | Configured maximum upload size in bytes                                                                                                                                                                                                            |
+| nextcloud_scrape_errors_total          | Counts the number of scrape errors by this collector                                                                                                                                                                                               |
+| nextcloud_shares_federated_total       | Number of federated shares by direction `sent` / `received`                                                                                                                                                                                        |
+| nextcloud_shares_total                 | Number of shares by type: <br> `authlink`: shared password protected links <br> `group`: shared groups <br>`link`: all shared links <br> `user`: shared users <br> `mail`: shared by mail <br> `room`: shared with room                            |
+| nextcloud_system_info                  | Contains meta information about Nextcloud as labels. Value is always 1.                                                                                                                                                                            |
+| nextcloud_system_update_available      | Contains information whether a system update containing security fixes is available: <br>`0`: no such update<br>`1`: security update available<br>In case of 1=yes, `available_version` label contains the new version. This metric is only available if activated. See [update security check](#update-security-check): the fixed vulnerabilities go to the log, and the `advisories_available` label tells whether the advisories could be used. |
+| nextcloud_up                           | Indicates if the metrics could be scraped by the exporter: <br>`1`: successful<br>`0`: unsuccessful (server down, server/endpoint not reachable, invalid credentials, ...)                                                                         |
+| nextcloud_users_total                  | Number of users of the instance                                                                                                                                                                                                                    |
+# nextcloud-exporter
